@@ -110,7 +110,7 @@ class RgrDataset(Dataset):
     
     def expe(self, idx):
         filename = None
-        if 'mr2ct-pretrained' in self.root_dir:
+        if 'trans' in self.root_dir:
             filename = self.expe_fake_ct_dir[idx]
         else:
             filename = self.expe_pure_mr[idx]
