@@ -110,6 +110,7 @@ class RgrDataset(Dataset):
     
     def expe(self, idx):
         filename = None
+#         print('>> LEN:', len(self.expe_fake_ct_dir))
         if 'trans' in self.root_dir:
             filename = self.expe_fake_ct_dir[idx]
         else:
@@ -161,7 +162,7 @@ class RgrDataset(Dataset):
         elif self.mode == 'together':
             return len(self.toge_file_names) + len(self.pure_file_names)
         elif self.mode == 'expe':
-            if 'mr2ct-pretrained' in self.root_dir:
+            if 'trans' in self.root_dir:
                 return len(self.expe_fake_ct_dir)
             else:
                 return len(self.expe_pure_mr)

@@ -17,6 +17,8 @@ class smallNet(nn.Module):
         self.maxpool = nn.MaxPool2d(2)
         # fc
         self.fc = nn.Linear(788544, 1)
+        # dropout
+        self.dropout = nn.Dropout(p=0.1)
 
     def forward(self, x):
 #         print(x.size())
@@ -29,7 +31,12 @@ class smallNet(nn.Module):
         x = self.maxpool(x)
         
         x = x.view(-1, self.num_flat_features(x))
-        return self.fc(x)
+        
+        x = self.fc(x)
+        
+        x = self.dropout(x)
+        
+        return x
 
     def num_flat_features(self, x):
         size = x.size()[1:]  # all dimensions except the batch dimension
