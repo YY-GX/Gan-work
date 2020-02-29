@@ -24,6 +24,14 @@ from rgrDataset import RgrDataset
 from smallNet import smallNet
 
 
+from datetime import datetime,timezone,timedelta
+
+
+
+
+
+# TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
+
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
@@ -89,14 +97,33 @@ parser.add_argument('--testdatapath', default=None, type=str,
                     help='Path of the test data.')
 parser.add_argument('--augement', default=None, type=str,
                     help='choose pure or toge or expe')
+parser.add_argument('--augedir', default=None, type=str,
+                    help='if augement is toge, add the dir at the same time')
 parser.add_argument('--usesmall', default=None, type=int,
                     help='1 for use and 0 for not use')
+parser.add_argument('--findlr', default=None, type=int,
+                    help='any type for find mode')
+parser.add_argument('--resumedir', default='', type=str, metavar='PATH',
+                    help='path of DIR to latest checkpoint (default: none)')
+parser.add_argument('--dropout', default=0, type=float,
+                    help='dropout ratio')
 
-best_acc1 = 0
+best_loss = 0
 
 
 args = parser.parse_args()
 writer = SummaryWriter(args.logpath)
+
+
+
+dt = datetime.utcnow()
+dt = dt.replace(tzinfo=timezone.utc)
+tzutc_8 = timezone(timedelta(hours=8))
+TIMESTAMP = str(dt.astimezone(tzutc_8))
+dirName=args.resumedir + 'checkpoint-' + TIMESTAMP + '/'
+os.mkdir(dirName)
+
+
 def main():
 #     args = parser.parse_args()
     
@@ -141,7 +168,7 @@ def main():
 
 
 def main_worker(gpu, ngpus_per_node, args):
-    global best_acc1
+    global best_loss
     args.gpu = gpu
 
     if args.gpu is not None:
@@ -158,7 +185,11 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
     # create model
     if args.usesmall == 1:
-        model = smallNet()  #Assign smallnet 
+#         model = None
+#         if args.dropout:
+        model = smallNet(args.dropout)
+#         else:
+#             model = smallNet()  #Assign smallnet 
 #         model.cuda()
     elif args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
@@ -167,7 +198,7 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         print("=> creating model '{}'".format(args.arch))
         model = models.__dict__[args.arch]()
-        model.fc = nn.Linear(512, 1)
+        model.fc = nn.Linear(2048, 1)
 
     if args.distributed:
         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -201,10 +232,10 @@ def main_worker(gpu, ngpus_per_node, args):
     # define loss function (criterion) and optimizer
     criterion = nn.MSELoss().cuda(args.gpu)
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
-#     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+#     optimizer = torch.optim.SGD(model.parameters(), args.lr,
+#                                 momentum=args.momentum,
+#                                 weight_decay=args.weight_decay)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -217,10 +248,10 @@ def main_worker(gpu, ngpus_per_node, args):
                 loc = 'cuda:{}'.format(args.gpu)
                 checkpoint = torch.load(args.resume, map_location=loc)
             args.start_epoch = checkpoint['epoch']
-            best_acc1 = checkpoint['best_acc1']
+            best_loss = checkpoint['best_loss']
             if args.gpu is not None:
                 # best_acc1 may be from a checkpoint from a different GPU
-                best_acc1 = best_acc1.to(args.gpu)
+                best_loss = best_loss.to(args.gpu)
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint '{}' (epoch {})"
@@ -240,14 +271,24 @@ def main_worker(gpu, ngpus_per_node, args):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
+    
+    root_dir_results = None
+    if args.augement == 'toge':
+        if args.augedir == None:
+            print('Please add the augement DIR!')
+            return
+        else:
+            root_dir_results = args.augedir
+        
     train_dataset = RgrDataset(
         'ct.csv', traindir, args.augement, 
         transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
+              transforms.Resize(256),
+#               transforms.RandomResizedCrop(256),
+              transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
-        ]))
+        ]), root_dir_results = root_dir_results)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -255,19 +296,20 @@ def main_worker(gpu, ngpus_per_node, args):
         train_sampler = None
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
+        train_dataset, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
     val_loader = torch.utils.data.DataLoader(
         RgrDataset(
-        'ct.csv', valdir, args.augement, 
+        'ct.csv', valdir, 'pure', 
         transforms.Compose([
-            transforms.RandomResizedCrop(224),
+            transforms.Resize(256),
+#             transforms.RandomResizedCrop(256),
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
         ])),
-        batch_size=args.batch_size, shuffle=False,
+        batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
     if args.evaluate:
@@ -277,27 +319,41 @@ def main_worker(gpu, ngpus_per_node, args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        adjust_learning_rate(optimizer, epoch, args)
+        lr = adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        loss_tr = train(train_loader, model, criterion, optimizer, epoch, args)
 
         # evaluate on validation set
-        acc1 = validate(val_loader, model, criterion, args, epoch)
+        loss = validate(val_loader, model, criterion, args, epoch)
 
+        writer.add_scalars('Loss', {
+            'Train': loss_tr,
+            'Val': loss
+        }, epoch)
+        writer.flush()
+        
+#         my_summary_writer.add_scalars(f'loss/check_info', {
+#             'score': score[iteration],
+#             'score_nf': score_nf[iteration],
+#         }, iteration)
+        
+#         writer.add_scalar('Scalar/lr-loss', loss, lr)
+#         writer.flush()
         # remember best acc@1 and save checkpoint
-        is_best = acc1 > best_acc1
-        best_acc1 = max(acc1, best_acc1)
+        is_best = loss > best_loss
+        best_loss = max(loss, best_loss)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'arch': args.arch,
-                'state_dict': model.state_dict(),
-                'best_acc1': best_acc1,
-                'optimizer' : optimizer.state_dict(),
-            }, is_best)
+            if epoch % 10 == 0:
+                save_checkpoint({
+                    'epoch': epoch + 1,
+                    'arch': args.arch,
+                    'state_dict': model.state_dict(),
+                    'best_loss': best_loss,
+                    'optimizer' : optimizer.state_dict(),
+                }, is_best, epoch)
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
@@ -333,8 +389,6 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 #         print(target)
         loss = criterion(output, target)
 
-        writer.add_scalar('Train/Loss', loss.item(), epoch)
-        writer.flush()
         # measure accuracy and record loss
         # acc1, acc5 = accuracy(output, target, topk=(1, 5))
         losses.update(loss.item(), images.size(0))
@@ -352,6 +406,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if i % args.print_freq == 0:
             progress.display(i)
+            
+    
+    return losses.avg
 
 
 def validate(val_loader, model, criterion, args, epoch):
@@ -376,8 +433,6 @@ def validate(val_loader, model, criterion, args, epoch):
             # compute output
             output = model(images)
             loss = criterion(output, target)
-            writer.add_scalar('Test/Loss', loss, epoch)
-            writer.flush()
             
             # measure accuracy and record loss
             # acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -395,11 +450,17 @@ def validate(val_loader, model, criterion, args, epoch):
         # TODO: this should also be done with the ProgressMeter
         print(' MSE:{loss}'
               .format(loss=loss))
+        
+#     writer.add_scalar('Test/Loss', losses.avg, epoch)
+#     writer.flush()
+    return losses.avg
 
-    return loss
 
-
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+def save_checkpoint(state, is_best, epoch, filename=args.resumedir):
+    filename = args.resumedir + 'checkpoint-' + TIMESTAMP + '/' + str(epoch) + '.pth.tar'
+    print('==================================================')
+    print('= ', filename)
+    print('==================================================')
     torch.save(state, filename)
     if is_best:
         shutil.copyfile(filename, 'model_best.pth.tar')
@@ -448,9 +509,16 @@ class ProgressMeter(object):
 
 def adjust_learning_rate(optimizer, epoch, args):
     """Sets the learning rate to the initial LR decayed by 10 every 30 epochs"""
+    if args.findlr:
+        lr = args.lr * 1.05
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = lr
+        return lr
+    
     lr = args.lr * (0.1 ** (epoch // 30))
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+    return lr
 
 
 # def accuracy(output, target, topk=(1,)):

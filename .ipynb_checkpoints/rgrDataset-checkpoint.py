@@ -159,7 +159,7 @@ class RgrDataset(Dataset):
     def __len__(self):
         if self.mode == 'pure':
             return len(self.pure_file_names)
-        elif self.mode == 'together':
+        elif self.mode == 'toge':
             return len(self.toge_file_names) + len(self.pure_file_names)
         elif self.mode == 'expe':
             if 'trans' in self.root_dir:
@@ -175,7 +175,7 @@ class RgrDataset(Dataset):
 #         print('Current idx:', idx)
         if self.mode == 'pure':
             return self.create_pure(idx)
-        elif self.mode == 'together':
+        elif self.mode == 'toge':
             if idx < len(self.pure_file_names):
                 return self.create_pure(idx)
             else:
