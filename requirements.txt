@@ -4,3 +4,5 @@ tensorboard
 dominate
 visdom
 fastai
+tensorboardX
+prefetch_generator

@@ -20,7 +20,12 @@ import torchvision.models as models
 from torch.utils.tensorboard import SummaryWriter   
 
 from smallNet_pt import smallNet
-
+# 新建DataLoaderX类
+from torch.utils.data import DataLoader
+from prefetch_generator import BackgroundGenerator
+class DataLoaderX(DataLoader):
+    def __iter__(self):
+        return BackgroundGenerator(super().__iter__())
 
 # from datetime import datetime
 # TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
@@ -208,9 +213,11 @@ def main_worker(gpu, ngpus_per_node, args):
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda(args.gpu)
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                                momentum=args.momentum,
-                                weight_decay=args.weight_decay)
+#    optimizer = torch.optim.SGD(model.parameters(), args.lr,
+#                                momentum=args.momentum,
+#                                weight_decay=args.weight_decay)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -256,11 +263,11 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         train_sampler = None
 
-    train_loader = torch.utils.data.DataLoader(
+    train_loader = DataLoaderX(
         train_dataset, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-    val_loader = torch.utils.data.DataLoader(
+    val_loader = DataLoaderX(
         datasets.ImageFolder(valdir, transforms.Compose([
 #             transforms.Resize(256),
 #             transforms.CenterCrop(224),

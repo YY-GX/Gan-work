@@ -3,3 +3,12 @@
 core.*
 *.pth.tar
 /'checkpoint*/
+/checkpoint*/
+/multi_task/checkpoints/
+/multi_task/logs/
+/multi_task/imgs
+/multi_task/docs
+/multi_task/results
+/multi_task/scripts
+/multi_task/survive
+

@@ -305,7 +305,7 @@ def main_worker(gpu, ngpus_per_node, args):
         transforms.Compose([
             transforms.Resize(256),
 #             transforms.RandomResizedCrop(256),
-            transforms.RandomHorizontalFlip(),
+#             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
         ])),
