@@ -18,6 +18,7 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 from torch.utils.tensorboard import SummaryWriter   
+import numpy as np
 
 # Import my custom dataset
 from rgrDataset import RgrDataset
@@ -27,7 +28,15 @@ from smallNet import smallNet
 from datetime import datetime,timezone,timedelta
 
 
+SEED=1
 
+np.random.seed(SEED)
+
+torch.manual_seed(SEED)
+
+torch.cuda.manual_seed_all(SEED)
+
+torch.backends.cudnn.deterministic=True
 
 
 # TIMESTAMP = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.now())
@@ -55,11 +64,11 @@ parser.add_argument('-b', '--batch-size', default=256, type=int,
                     help='mini-batch size (default: 256), this is the total '
                          'batch size of all GPUs on the current node when '
                          'using Data Parallel or Distributed Data Parallel')
-parser.add_argument('--lr', '--learning-rate', default=0.1, type=float,
+parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                     metavar='LR', help='initial learning rate', dest='lr')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
                     help='momentum')
-parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
+parser.add_argument('--wd', '--weight-decay', default=0, type=float,
                     metavar='W', help='weight decay (default: 1e-4)',
                     dest='weight_decay')
 parser.add_argument('-p', '--print-freq', default=10, type=int,
@@ -235,8 +244,8 @@ def main_worker(gpu, ngpus_per_node, args):
 #     optimizer = torch.optim.SGD(model.parameters(), args.lr,
 #                                 momentum=args.momentum,
 #                                 weight_decay=args.weight_decay)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
-
+#     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=args.weight_decay, amsgrad=False)
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):

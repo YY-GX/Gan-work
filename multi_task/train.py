@@ -31,9 +31,11 @@ from torch.utils.tensorboard import SummaryWriter
 # 新建DataLoaderX类
 from torch.utils.data import DataLoader
 from prefetch_generator import BackgroundGenerator
+import numpy as np
 class DataLoaderX(DataLoader):
     def __iter__(self):
         return BackgroundGenerator(super().__iter__())
+
 
         
         
@@ -76,17 +78,51 @@ if __name__ == '__main__':
     writer = SummaryWriter(opt.log_dir)
 
     for epoch in range(opt.epoch_count, opt.n_epochs + opt.n_epochs_decay + 1):    # outer loop for different epochs; we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>
+        
         epoch_start_time = time.time()  # timer for entire epoch
         iter_data_time = time.time()    # timer for data loading per iteration
         epoch_iter = 0                  # the number of training iterations in current epoch, reset to 0 every epoch
         visualizer.reset()              # reset the visualizer: make sure it saves the results to HTML at least once every epoch
 
-        
+        # YY part         
         loss_train = None
         loss_test = None
         losses_train = AverageMeter('Loss', ':.4e')
         losses_test = AverageMeter('Loss', ':.4e')
-        
+        # linear change the lambda_rgr
+        weight = 0
+        # if epoch < 100:
+        #     weight = (3.0 / 200000) * epoch + 1.0 / 2000
+        # elif epoch < 250:
+        #     weight = (3.0 / 50000) * epoch - 1.0 / 250
+        # else:
+        #     weight = 11.0 / 1000
+            
+            
+        # 2nd change
+#         if epoch < 50:
+#             weight = (9.0 / 250000) * (epoch - 50) + 1.0 / 500
+#         elif epoch < 200:
+#             weight = (4.0 / 25000) * (epoch - 100) + 1.0 / 100
+#         else:
+#             weight = 13.0 / 500
+            
+            
+        # 3rd change
+#         if epoch < 150:
+#             weight = 1 / 10000
+#         else:
+#             weight = 1 / 1000
+
+        # 4th change
+#         if epoch < 100:
+#             weight = 0
+#         else:
+#             weight = 1 / 2000
+            
+       # 5th change
+        weight = 1 / 1000
+        model.set_lambda_rgr(weight)
         
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
@@ -121,11 +157,13 @@ if __name__ == '__main__':
             loss = loss_tr[0]
             predict = loss_tr[1]
             label = loss_tr[2]
-            losses_train.update(loss.item(), opt.batch_size)
+            losses_train.update(loss.item(), opt.batch_size * 2)
             
             rgr = loss_tr[3]
             G = loss_tr[4]
             cyc = loss_tr[5]
+            
+            iseesee = loss_tr[6]
 
             if total_iters % opt.display_freq == 0:   # display images on visdom and save images to a HTML file
                 save_result = total_iters % opt.update_html_freq == 0
@@ -145,6 +183,7 @@ if __name__ == '__main__':
                 print('rgr: ', rgr)
                 print('G: ', G)
                 print('cyc: ', cyc)
+                print('lambda: ', iseesee)
                 print('===================================')
 
             if total_iters % opt.save_latest_freq == 0:   # cache our latest model every <save_latest_freq> iterations

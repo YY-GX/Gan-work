@@ -61,11 +61,17 @@ class CycleGANModel(BaseModel):
         """
 
         BaseModel.__init__(self, opt)
-        self.writer = SummaryWriter('./logs/log_rgr') 
+        self.writer = SummaryWriter(opt.log_dir) 
         
         #         YYpart
         self.netRgr = models.__dict__[self.opt.arch]().to(self.device)
-        self.netRgr.fc = nn.Linear(2048, 1).to(self.device)
+        ly = nn.Sequential(
+            nn.Dropout(p=opt.dropout),
+            nn.Linear(opt.fc_input, 1)
+        )   
+        # self.netRgr.fc = nn.Linear(512, 1).to(self.device)
+        self.netRgr.fc = ly.to(self.device)
+        self.netRgr = nn.DataParallel(self.netRgr, device_ids=self.opt.gpu_ids)
         self.criterion = MSELossFlat()#.to(self.device)
         
         
@@ -115,7 +121,7 @@ class CycleGANModel(BaseModel):
             self.optimizer_G = torch.optim.Adam([
                 {'params': self.netG_A.parameters()},
                 {'params': self.netG_B.parameters()},
-                {'params': self.netRgr.parameters(), 'lr': self.opt.rgr_lr},
+                {'params': self.netRgr.parameters(), 'lr': self.opt.rgr_lr, 'weight_decay': self.opt.wd_rgr},
             ], lr=opt.lr, betas=(opt.beta1, 0.999))
             print('optimizer_G param:')
             print(self.optimizer_G)
@@ -173,26 +179,30 @@ class CycleGANModel(BaseModel):
 #         print('-------')
         if not (self.opt.change_lr == -1):
             self.optimizers[0].param_groups[2]['lr'] = self.opt.change_lr
-            print('Updated optimizer_G param:')
-            print(self.optimizers[0])
+        if not (self.opt.change_wd == -1):
+            self.optimizers[0].param_groups[2]['weight_decay'] = self.opt.change_wd
+
 
         # normalize fake_CT
         instanceNorm = nn.BatchNorm2d(3).to(self.device)
+        #instanceNorm = nn.DataParallel(instanceNorm, device_ids=self.opt.gpu_ids)
         self.input_rgr = instanceNorm(self.fake_B)
         
         # tensorboard
         self.call_tensorboard()
         
         # concate fake_CT and real_CT images and their labels. Do shuffling to both of them without damaging their mapping.       
-        self.temp1 = torch.cat((self.input_rgr, self.real_B), 0).detach().cpu().numpy()
+        self.temp1 = torch.cat((self.input_rgr, instanceNorm(self.real_B)), 0).detach().cpu().numpy()
         state = np.random.get_state()
         np.random.shuffle(self.temp1)
         self.concat_tensor = torch.from_numpy(self.temp1).to(self.device)
+        # self.concat_tensor = nn.DataParallel(self.concat_tensor, device_ids=self.opt.gpu_ids)
         
         self.temp2 = torch.cat((self.A_label, self.B_label), 0).detach().cpu().numpy()
         np.random.set_state(state)
         np.random.shuffle(self.temp2)
         self.concat_label = torch.from_numpy(self.temp2).to(self.device)
+        # self.concat_label = nn.DataParallel(self.concat_label, device_ids=self.opt.gpu_ids)
         
         self.rgr_output = self.netRgr(self.concat_tensor).squeeze()
         
@@ -248,7 +258,9 @@ class CycleGANModel(BaseModel):
             self.loss_idt_B = 0
 
         # YYGX
-        lambda_rgr = self.opt.lambda_Rgr  
+#         lambda_rgr = self.opt.lambda_Rgr  
+        lambda_rgr = self.lambda_rgr
+        self.iseesee = lambda_rgr
         self.loss_rgr = self.criterion(self.rgr_output, self.concat_label) 
         
         # GAN loss D_A(G_A(A))
@@ -283,7 +295,7 @@ class CycleGANModel(BaseModel):
         
 #         YY part
     def loss_train(self):
-        return self.loss_rgr, self.rgr_output, self.concat_label, self.loss_rgr * (self.opt.lambda_Rgr), self.loss_G_A, self.loss_cycle_A
+        return self.loss_rgr, self.rgr_output, self.concat_label, self.loss_rgr * self.lambda_rgr, self.loss_G_A, self.loss_cycle_A, self.iseesee
     
     def loss_test(self, data, label):
         data = data.to(self.device)
@@ -292,7 +304,8 @@ class CycleGANModel(BaseModel):
         output = self.criterion(temp, label)
         return output
 
-        
+    def set_lambda_rgr(self, lambda_rgr):
+        self.lambda_rgr = lambda_rgr
         
         
 '''

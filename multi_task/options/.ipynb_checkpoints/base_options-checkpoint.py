@@ -59,9 +59,16 @@ class BaseOptions():
         parser.add_argument('--log_dir', default='', type=str, help='place to store log files')
         parser.add_argument('--arch', default='resnet50', type=str, help='network name')
         parser.add_argument('--change_lr', default='-1', type=float, help='change the lr of rgr')
+        parser.add_argument('--change_wd', default='-1', type=float, help='change the wd of rgr')
+        parser.add_argument('--fc_input', default='2048', type=int, help='input size of fc layer')
         # 2 important param for tuning multi-task.         
         parser.add_argument('--rgr_lr', default='0.01', type=float, help='lr of regression model')
         parser.add_argument('--lambda_Rgr', default='0.015', type=float, help='weight of the rgr term')
+
+        # 2 important param for regularization
+        parser.add_argument('--wd_rgr', default='0', type=float, help='weight decay for rgr part')
+        parser.add_argument('--dropout', default='0.5', type=float, help='dropout value')
+
         
         
         

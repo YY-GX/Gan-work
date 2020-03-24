@@ -11,4 +11,5 @@ core.*
 /multi_task/results
 /multi_task/scripts
 /multi_task/survive
+/multi_task/runs
 
