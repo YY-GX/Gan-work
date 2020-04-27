@@ -115,13 +115,14 @@ if __name__ == '__main__':
 #             weight = 1 / 1000
 
         # 4th change
-#         if epoch < 100:
-#             weight = 0
-#         else:
-#             weight = 1 / 2000
+#        if epoch < 50:
+#            weight = 0
+#        else:
+#            weight = 1 / 2000
             
        # 5th change
-        weight = 1 / 1000
+        weight = 1 / 2500
+
         model.set_lambda_rgr(weight)
         
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],

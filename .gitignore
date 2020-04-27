@@ -12,4 +12,6 @@ core.*
 /multi_task/scripts
 /multi_task/survive
 /multi_task/runs
-
+/x2ct/
+/data/
+/numbers/data
