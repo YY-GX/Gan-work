@@ -73,9 +73,11 @@ class UnalignedDataset(BaseDataset):
 #         >>>>>>>>>>>>>>>>>>>>>>>>> YY part
 #         A: MRI
         patient_id_A = A_path.split('/')[-1][:12]
+#         print(patient_id_A)
         A_label = int((self.mri_csv_data).loc[self.mri_csv_data['Patient'] == patient_id_A, 'age_at_initial_pathologic'])
 #         B: CT
         patient_id_B = int((B_path.split('/'))[-1].split('-')[0])
+#         print(patient_id_B)
         B_label = int((self.ct_csv_data).loc[self.ct_csv_data['Patient Number'] == patient_id_B, 'Age\n(years)'])
 #         >>>>>>>>>>>>>>>>>>>>>>>>> YY part
         

@@ -108,7 +108,7 @@ parser.add_argument('--augement', default=None, type=str,
                     help='choose pure or toge or expe')
 parser.add_argument('--augedir', default=None, type=str,
                     help='if augement is toge, add the dir at the same time')
-parser.add_argument('--usesmall', default=None, type=int,
+parser.add_argument('--usesmall', default=0, type=int,
                     help='1 for use and 0 for not use')
 parser.add_argument('--findlr', default=None, type=int,
                     help='any type for find mode')
@@ -131,7 +131,7 @@ writer = SummaryWriter(args.logpath)
 
 
 dt = datetime.utcnow()
-dt = dt.replace(tzinfo=timezone.utc)
+dt = dt.replace(tzinfo=timezone.utc) 
 tzutc_8 = timezone(timedelta(hours=8))
 TIMESTAMP = str(dt.astimezone(tzutc_8))
 dirName=args.resumedir + 'checkpoint-' + TIMESTAMP + '/'
@@ -199,7 +199,7 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
     # create model
     if args.usesmall == 1:
-#         model = None
+#         model = None 
 #         if args.dropout:
         model = smallNet(args.dropout)
 #         else:
@@ -207,11 +207,13 @@ def main_worker(gpu, ngpus_per_node, args):
 #         model.cuda()
     elif args.pretrained:
         print("=> using pre-trained model '{}'".format(args.arch))
-        model = models.__dict__[args.arch](pretrained=True)
+#         model = models.__dict__[args.arch](pretrained=True)
+        model = models.resnet18()
         model.fc = nn.Linear(2048, 1)
     else:
         print("=> creating model '{}'".format(args.arch))
-        model = models.__dict__[args.arch]()
+#         model = models.__dict__[args.arch]()
+        model = models.resnet18()
         model.fc = nn.Linear(2048, 1)
 
     if args.distributed:
@@ -298,7 +300,9 @@ def main_worker(gpu, ngpus_per_node, args):
         'ct.csv', traindir, args.augement, 
         transforms.Compose([
               transforms.Resize(256),
-#               transforms.RandomResizedCrop(256),
+#               transforms.CenterCrop(224), 
+#               transforms.RandomRotation(15),
+#               transforms.RandomAffine(degrees=15),
               transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
@@ -316,13 +320,13 @@ def main_worker(gpu, ngpus_per_node, args):
     val_loader = torch.utils.data.DataLoader(
         RgrDataset(
         'ct.csv', valdir, 'pure', 
-        transforms.Compose([
+        transforms.Compose([  
             transforms.Resize(256),
 #             transforms.RandomResizedCrop(256),
 #             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
             normalize,
-        ])),
+        ])), 
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
@@ -359,7 +363,8 @@ def main_worker(gpu, ngpus_per_node, args):
                     outcome += loss
             outcome /= 10    
             writer1.writerow(str(outcome))
-            model = models.__dict__[args.arch]()
+#             model = models.__dict__[args.arch]()
+            model = models.resnet18()
             model.fc = nn.Linear(2048, 1)
             model = model.cuda(args.gpu)
             optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999), eps=1e-08, weight_decay=args.weight_decay, amsgrad=False)

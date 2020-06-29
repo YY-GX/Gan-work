@@ -4,6 +4,10 @@ import random
 import shutil
 import time
 import warnings
+from CombineDataset import CombineDataset
+import mnist
+import mnistm
+import usps
 
 import torch
 import torch.nn as nn
@@ -17,11 +21,14 @@ import torch.utils.data.distributed
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
-from torch.utils.tensorboard import SummaryWriter   
+from torch.utils.tensorboard import SummaryWriter    
+import numpy as np
+from smallNet import smallNet
 
-from smallNet_pt import smallNet
+
+
 # 新建DataLoaderX类
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset, RandomSampler, ConcatDataset
 from prefetch_generator import BackgroundGenerator
 class DataLoaderX(DataLoader):
     def __iter__(self):
@@ -47,13 +54,13 @@ parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet18',
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet18)')
-parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+parser.add_argument('-j', '--workers', default=8, type=int, metavar='N',
                     help='number of data loading workers (default: 4)')
-parser.add_argument('--epochs', default=90, type=int, metavar='N',
+parser.add_argument('--epochs', default=300, type=int, metavar='N',
                     help='number of total epochs to run')
 parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('-b', '--batch-size', default=256, type=int,
+parser.add_argument('-b', '--batch-size', default=64, type=int,
                     metavar='N',
                     help='mini-batch size (default: 256), this is the total '
                          'batch size of all GPUs on the current node when '
@@ -83,7 +90,7 @@ parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training. ')
-parser.add_argument('--gpu', default=None, type=int,
+parser.add_argument('--gpu', default=0, type=int,
                     help='GPU id to use.')
 parser.add_argument('--multiprocessing-distributed', action='store_true',
                     help='Use multi-processing distributed training to launch '
@@ -92,11 +99,11 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
                          'multi node data parallel training')
 
 # My own params >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-parser.add_argument('--usesmall', default=None, type=int,
+parser.add_argument('--usesmall', default=0, type=int,
                     help='1 for use and 0 for not use')
-parser.add_argument('--logpath', default='logs/log_raw', type=str,
+parser.add_argument('--logpath', default='logs/log_number_pure_MNIST', type=str,
                     help='Path to store tensorboard log files.')
-parser.add_argument('--resumedir', default='', type=str, metavar='PATH',
+parser.add_argument('--resumedir', default='checkpoints/', type=str, metavar='PATH',
                     help='path of DIR to latest checkpoint (default: none)')
 
 
@@ -244,39 +251,46 @@ def main_worker(gpu, ngpus_per_node, args):
     cudnn.benchmark = True
 
     # Data loading code ================================================================================================================
-    traindir = os.path.join(args.data, 'train')
-    valdir = os.path.join(args.data, 'val')
+    # Data loading code ================================================================================================================
+#     traindir = os.path.join(args.data, 'train')
+#     valdir = os.path.join(args.data, 'val')
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    train_dataset = datasets.ImageFolder(
-        traindir,
-        transforms.Compose([
-#             transforms.RandomResizedCrop(224),
-#             transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ]))
+#     train_dataset = datasets.ImageFolder(
+#         traindir,
+#         transforms.Compose([
+# #             transforms.RandomResizedCrop(224),
+# #             transforms.RandomHorizontalFlip(),
+#             transforms.ToTensor(),
+#             normalize,
+#         ]))
+
+
+#     train_dataset = Subset(mnist.mnist_train_dataset, range(200))
+    
+#     com_dataset = CombineDataset(200, 10000)
+
+#     val_dataset = Subset(mnistm.mnistm_valid_dataset, range(2000))
+    
+    train_dataset = usps.usps_train_dataset
+    val_dataset = usps.usps_valid_dataset
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     else:
         train_sampler = None
 
-    train_loader = DataLoaderX(
+    train_loader = DataLoader(
         train_dataset, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
-    val_loader = DataLoaderX(
-        datasets.ImageFolder(valdir, transforms.Compose([
-#             transforms.Resize(256),
-#             transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            normalize,
-        ])),
+    val_loader = DataLoader(
+        val_dataset,
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
 
+    
     if args.evaluate:
         validate(val_loader, model, criterion, args)
         return
@@ -285,13 +299,14 @@ def main_worker(gpu, ngpus_per_node, args):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
+        
 
         # train for one epoch
         acc1_tr, loss_tr = train(train_loader, model, criterion, optimizer, epoch, args)
 
         # evaluate on validation set
         acc1, loss_te = validate(val_loader, model, criterion, args, epoch)
-        
+
 
         writer.add_scalars('Accuracy', {
             'Train': acc1_tr,
@@ -323,6 +338,7 @@ def main_worker(gpu, ngpus_per_node, args):
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
+
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -338,7 +354,9 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     correct = 0
     total = 0
     end = time.time()
+
     for i, (images, target) in enumerate(train_loader):
+
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -350,6 +368,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
         output = model(images)
         loss = criterion(output, target)
         
+
         # L1 norm
 #         l1_norm = torch.norm(model[0].weight, p=1)
 #         loss += l1_norm
@@ -388,6 +407,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 #     writer.flush()
 
 def validate(val_loader, model, criterion, args, epoch):
+
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     top1 = AverageMeter('Acc@1', ':6.2f')

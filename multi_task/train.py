@@ -27,14 +27,14 @@ from rgrDataset import RgrDataset
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from torch.utils.tensorboard import SummaryWriter   
+# from torch.utils.tensorboard import SummaryWriter   
 # 新建DataLoaderX类
 from torch.utils.data import DataLoader
-from prefetch_generator import BackgroundGenerator
+# from prefetch_generator import BackgroundGenerator
 import numpy as np
-class DataLoaderX(DataLoader):
-    def __iter__(self):
-        return BackgroundGenerator(super().__iter__())
+# class DataLoaderX(DataLoader):
+#     def __iter__(self):
+#         return BackgroundGenerator(super().__iter__())
 
 
         
@@ -75,7 +75,7 @@ if __name__ == '__main__':
     total_iters = 0                # the total number of training iterations
     
 #     writer = SummaryWriter('logs/log_rgr_long/')
-    writer = SummaryWriter(opt.log_dir)
+#     writer = SummaryWriter(opt.log_dir)
 
     for epoch in range(opt.epoch_count, opt.n_epochs + opt.n_epochs_decay + 1):    # outer loop for different epochs; we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>
         
@@ -115,20 +115,42 @@ if __name__ == '__main__':
 #             weight = 1 / 1000
 
         # 4th change
-#        if epoch < 50:
-#            weight = 0
-#        else:
-#            weight = 1 / 2000
+#         if epoch < 25:
+#             weight = 0
+#         else:
+#             weight = 1 / 2000
             
-       # 5th change
-        weight = 1 / 2500
+        # ====== NEW ======     
+    
+        # NEW 1th change
+        weight = 1 / 2000
+        
+        # NEW 2th change
+#         if epoch < 50:
+#             weight = 0
+#         else:
+#             weight = 1 / 2000
+
+        # NEW 3th change
+#         if epoch < 100:
+#             weight = 0
+#         else:
+#             weight = 1 / 2000
+
+        # NEW 4th change
+#         if epoch < 150:
+#             weight = 0
+#         else:
+#             weight = 1 / 2000
+        
+
 
         model.set_lambda_rgr(weight)
         
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
         valdir = opt.dataroot + 'testB/'
-        val_loader = DataLoaderX(
+        val_loader = DataLoader(
             RgrDataset(
             'ct.csv', valdir, 'pure', 
             transforms.Compose([
@@ -140,7 +162,6 @@ if __name__ == '__main__':
             ])),
             batch_size=opt.batch_size, shuffle=True,
             num_workers=opt.num_threads, pin_memory=True)
-        
 
         
         # TRAIN PART(rgr)
@@ -149,10 +170,12 @@ if __name__ == '__main__':
             if total_iters % opt.print_freq == 0:
                 t_data = iter_start_time - iter_data_time
 
+
             total_iters += opt.batch_size
             epoch_iter += opt.batch_size
             model.set_input(data)         # unpack data from dataset and apply preprocessing
             model.optimize_parameters()   # calculate loss functions, get gradients, update network weights
+            
 #             YY part
             loss_tr = model.loss_train()
             loss = loss_tr[0]
@@ -209,11 +232,11 @@ if __name__ == '__main__':
         print('|| Train loss: ', train_loss)
         print('|| Validation loss: ', test_loss)
         
-        writer.add_scalars('Loss', {
-            'Train': train_loss,
-            'Val': test_loss
-        }, epoch)
-        writer.flush()
+#         writer.add_scalars('Loss', {
+#             'Train': train_loss,
+#             'Val': test_loss
+#         }, epoch)
+#         writer.flush()
         
         
             

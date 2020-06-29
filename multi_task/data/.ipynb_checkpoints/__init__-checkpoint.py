@@ -15,10 +15,10 @@ import torch.utils.data
 from data.base_dataset import BaseDataset
 # 新建DataLoaderX类
 from torch.utils.data import DataLoader
-from prefetch_generator import BackgroundGenerator
-class DataLoaderX(DataLoader):
-    def __iter__(self):
-        return BackgroundGenerator(super().__iter__())
+# from prefetch_generator import BackgroundGenerator
+# class DataLoaderX(DataLoader):
+#     def __iter__(self):
+#         return BackgroundGenerator(super().__iter__())
 
 
 
@@ -79,7 +79,7 @@ class CustomDatasetDataLoader():
         dataset_class = find_dataset_using_name(opt.dataset_mode)
         self.dataset = dataset_class(opt)
         print("dataset [%s] was created" % type(self.dataset).__name__)
-        self.dataloader = DataLoaderX(
+        self.dataloader = DataLoader(
             self.dataset,
             batch_size=opt.batch_size,
             shuffle=not opt.serial_batches,

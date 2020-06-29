@@ -5,8 +5,8 @@ from .base_model import BaseModel
 from . import networks
 import torchvision.models as models
 import torch.nn as nn
-from fastai.layers import *
-from fastai.vision import *
+from fastai.layers import MSELossFlat
+# from fastai.vision import *
 from tensorboardX import SummaryWriter
 from torchvision.utils import *
 import torchvision.transforms as transforms
