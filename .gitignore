@@ -15,3 +15,6 @@ core.*
 /x2ct/
 /data/
 /numbers/
+/baseline_mr2crt_dann/
+/ssl_tl/
+/multi_task/collections/
