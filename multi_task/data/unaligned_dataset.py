@@ -80,7 +80,7 @@ class UnalignedDataset(BaseDataset):
 #         A: PET
         patient_id_A = '-'.join(A_path.split('/')[-1].split('-')[:3])
 #         print(patient_id_A)
-        A_label = int((self.mri_csv_data).loc[self.pet_csv_data['Patient #'] == patient_id_A, 'Age'])
+        A_label = int((self.pet_csv_data).loc[self.pet_csv_data['Patient #'] == patient_id_A, 'Age'])
     
 #         B: CT
         patient_id_B = int((B_path.split('/'))[-1].split('-')[0])

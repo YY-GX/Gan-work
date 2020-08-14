@@ -27,6 +27,7 @@ class UnalignedDataset(BaseDataset):
         
         self.ct_csv_data = pd.read_csv('data/ct.csv')[['Patient Number', 'Age\n(years)']]
         self.mri_csv_data = pd.read_csv('data/mri.csv')[['Patient', 'age_at_initial_pathologic']]
+        self.pet_csv_data = pd.read_csv('data/pet.csv')
 
         self.dir_A = os.path.join(opt.dataroot, opt.phase + 'A')  # create a path '/path/to/data/trainA'
         self.dir_B = os.path.join(opt.dataroot, opt.phase + 'B')  # create a path '/path/to/data/trainB'
@@ -72,9 +73,15 @@ class UnalignedDataset(BaseDataset):
         
 #         >>>>>>>>>>>>>>>>>>>>>>>>> YY part
 #         A: MRI
-        patient_id_A = A_path.split('/')[-1][:12]
+#         patient_id_A = A_path.split('/')[-1][:12]
+# #         print(patient_id_A)
+#         A_label = int((self.mri_csv_data).loc[self.mri_csv_data['Patient'] == patient_id_A, 'age_at_initial_pathologic'])
+    
+#         A: PET
+        patient_id_A = '-'.join(A_path.split('/')[-1].split('-')[:3])
 #         print(patient_id_A)
-        A_label = int((self.mri_csv_data).loc[self.mri_csv_data['Patient'] == patient_id_A, 'age_at_initial_pathologic'])
+        A_label = int((self.pet_csv_data).loc[self.pet_csv_data['Patient #'] == patient_id_A, 'Age'])
+    
 #         B: CT
         patient_id_B = int((B_path.split('/'))[-1].split('-')[0])
 #         print(patient_id_B)
