@@ -199,8 +199,13 @@ class BaseModel(ABC):
                     del state_dict._metadata
 
                 # patch InstanceNorm checkpoints prior to 0.4
-                for key in list(state_dict.keys()):  # need to copy keys here because we mutate in loop
-                    self.__patch_instance_norm_state_dict(state_dict, net, key.split('.'))
+                if load_filename != 'latest_net_Rgr.pth':
+                    for key in list(state_dict.keys()):  # need to copy keys here because we mutate in loop
+                        self.__patch_instance_norm_state_dict(state_dict, net, key.split('.'))
+                else:
+                    state_dict = OrderedDict((k[7:], v) for k, v in state_dict.items())
+#                     print("RESNET_MINE: ")
+#                     print(state_dict.keys())
                 net.load_state_dict(state_dict)
 
     def print_networks(self, verbose):

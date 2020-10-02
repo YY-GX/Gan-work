@@ -72,15 +72,16 @@ class UnalignedDataset(BaseDataset):
         
         
 #         >>>>>>>>>>>>>>>>>>>>>>>>> YY part
-#         A: MRI
-#         patient_id_A = A_path.split('/')[-1][:12]
-# #         print(patient_id_A)
-#         A_label = int((self.mri_csv_data).loc[self.mri_csv_data['Patient'] == patient_id_A, 'age_at_initial_pathologic'])
-    
-#         A: PET
-        patient_id_A = '-'.join(A_path.split('/')[-1].split('-')[:3])
-#         print(patient_id_A)
-        A_label = int((self.pet_csv_data).loc[self.pet_csv_data['Patient #'] == patient_id_A, 'Age'])
+        if len(A_path.split('/')[-1]) > 25: # MRI
+    #         A: MRI
+            patient_id_A = A_path.split('/')[-1][:12]
+    #         print(patient_id_A)
+            A_label = int((self.mri_csv_data).loc[self.mri_csv_data['Patient'] == patient_id_A, 'age_at_initial_pathologic'])
+        else: # PET
+    #         A: PET
+            patient_id_A = '-'.join(A_path.split('/')[-1].split('-')[:3])
+    #         print(patient_id_A)
+            A_label = int((self.pet_csv_data).loc[self.pet_csv_data['Patient #'] == patient_id_A, 'Age'])
     
 #         B: CT
         patient_id_B = int((B_path.split('/'))[-1].split('-')[0])

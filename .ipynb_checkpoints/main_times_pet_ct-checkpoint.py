@@ -19,7 +19,6 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 from torch.utils.tensorboard import SummaryWriter   
 import numpy as np
-import torch.nn.functional as F
 
 # Import my custom dataset
 from rgrDataset import RgrDataset
@@ -218,46 +217,35 @@ def main_worker(gpu, ngpus_per_node, args):
 # #         model.fc = nn.Linear(2048, 1)
 
     model = models.__dict__[args.arch](num_classes=1, pretrained=False)
-    if args.dropout != 0:
-        model.fc.register_forward_hook(lambda m, inp, out: F.dropout(out, p=args.dropout, training=m.training))
 
-#     if args.distributed:
-#         # For multiprocessing distributed, DistributedDataParallel constructor
-#         # should always set the single device scope, otherwise,
-#         # DistributedDataParallel will use all available devices.
-#         if args.gpu is not None:
-#             torch.cuda.set_device(args.gpu)
-#             model.cuda(args.gpu)
-#             # When using a single GPU per process and per
-#             # DistributedDataParallel, we need to divide the batch size
-#             # ourselves based on the total number of GPUs we have
-#             args.batch_size = int(args.batch_size / ngpus_per_node)
-#             args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
-#             model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
-#         else:
-#             model.cuda()
-#             # DistributedDataParallel will divide and allocate batch_size to all
-#             # available GPUs if device_ids are not set
-#             model = torch.nn.parallel.DistributedDataParallel(model)
-#     elif args.gpu is not None:
-#         torch.cuda.set_device(args.gpu)
-#         model = model.cuda(args.gpu)
-#     else:
-#         # DataParallel will divide and allocate batch_size to all available GPUs
-#         if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
-#             model.features = torch.nn.DataParallel(model.features)
-#             model.cuda()
-#         else:
-#             model = torch.nn.DataParallel(model).cuda()
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Device {}".format(device))
-            
-    # Data parallel for multiple GPU usage
-    if torch.cuda.device_count() > 1:
-        print("[INFO] Let's use ", torch.cuda.device_count(), " GPUs!")
-        model = nn.DataParallel(model)
-    model = model.to(device)
+    if args.distributed:
+        # For multiprocessing distributed, DistributedDataParallel constructor
+        # should always set the single device scope, otherwise,
+        # DistributedDataParallel will use all available devices.
+        if args.gpu is not None:
+            torch.cuda.set_device(args.gpu)
+            model.cuda(args.gpu)
+            # When using a single GPU per process and per
+            # DistributedDataParallel, we need to divide the batch size
+            # ourselves based on the total number of GPUs we have
+            args.batch_size = int(args.batch_size / ngpus_per_node)
+            args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
+            model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+        else:
+            model.cuda()
+            # DistributedDataParallel will divide and allocate batch_size to all
+            # available GPUs if device_ids are not set
+            model = torch.nn.parallel.DistributedDataParallel(model)
+    elif args.gpu is not None:
+        torch.cuda.set_device(args.gpu)
+        model = model.cuda(args.gpu)
+    else:
+        # DataParallel will divide and allocate batch_size to all available GPUs
+        if args.arch.startswith('alexnet') or args.arch.startswith('vgg'):
+            model.features = torch.nn.DataParallel(model.features)
+            model.cuda()
+        else:
+            model = torch.nn.DataParallel(model).cuda()
 
     # define loss function (criterion) and optimizer
     criterion = nn.MSELoss().cuda(args.gpu)
@@ -315,6 +303,7 @@ def main_worker(gpu, ngpus_per_node, args):
         'ct.csv', traindir, args.augement, 
         transforms.Compose([
               transforms.Resize(256),
+              transforms.RandomResizedCrop(224),
 #               transforms.CenterCrop(224), 
 #               transforms.RandomRotation(15),
 #               transforms.RandomAffine(degrees=15),
@@ -334,9 +323,9 @@ def main_worker(gpu, ngpus_per_node, args):
 
     val_loader = torch.utils.data.DataLoader(
         RgrDataset(
-        'ct.csv', valdir, args.augement, 
+        'ct.csv', valdir, 'mr_pure', 
         transforms.Compose([  
-            transforms.Resize(256),
+            transforms.Resize(224),
 #             transforms.RandomResizedCrop(256),
 #             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -510,27 +499,16 @@ def validate(val_loader, model, criterion, args, epoch):
     return losses.avg
 
 
-# def save_checkpoint(state, is_best, epoch, filename=args.resumedir):
-#     filename = args.resumedir + 'checkpoint-' + TIMESTAMP + '/' + str(epoch) + '.pth.tar'
-#     print(filename)
-# #     filename = args.resumedir
-#     print('==================================================')
-#     print('= ', filename)
-#     print('==================================================')
-#     torch.save(state, filename)
-#     if is_best:
-#         shutil.copyfile(filename, 'model_best.pth.tar')
-
-def save_checkpoint(state, is_best, epoch, checkpoint_path=args.resumedir):
-    record = {
-        'epoch': epoch + 1,
-        'state_dict': state,
-    }
-    filename = os.path.join(checkpoint_path, 'record_epoch{}.pth.tar'.format(epoch))
-    torch.save(record, filename)
+def save_checkpoint(state, is_best, epoch, filename=args.resumedir):
+    filename = args.resumedir + 'checkpoint-' + TIMESTAMP + '/' + str(epoch) + '.pth.tar'
+    print(filename)
+#     filename = args.resumedir
+    print('==================================================')
+    print('= ', filename)
+    print('==================================================')
+    torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, os.path.join(checkpoint_path, 'model_best.pth.tar'))
-
+        shutil.copyfile(filename, 'model_best.pth.tar')
 
 
 class AverageMeter(object):

@@ -19,12 +19,14 @@ import torchvision.datasets as datasets
 import torchvision.models as models
 from torch.utils.tensorboard import SummaryWriter   
 import numpy as np
-import torch.nn.functional as F
 
 # Import my custom dataset
 from rgrDataset import RgrDataset
 from smallNet import smallNet
 import csv
+
+from MultiTaskModel import MultiTaskModel, MultiTaskModel1, MultiTaskModel2, MultiTaskModel3, MultiTaskModel4
+from MultiTaskDataset import MultiTaskDataset, MultiTaskPETDataset
 
 from datetime import datetime,timezone,timedelta
 
@@ -121,8 +123,16 @@ parser.add_argument('--times', default=1, type=int,
                     help='run the whole file for times')
 parser.add_argument('--filename', default='save_number_file.csv', type=str,
                     help='file to save loss')
+parser.add_argument('--lambda1', default=0.5, type=float,
+                    help='coefficient of mr')
+parser.add_argument('--lambda2', default=0.5, type=float,
+                    help='coefficient of ct')
+parser.add_argument('--mymodel', default=None, type=str,
+                    help='model')
 
 
+parser.add_argument('--test-dir', type=str, default='./../datasets/final_mr_ct/testB/',
+                    help='path to the test folder, each class has a single folder')
 best_loss = 0
 
 
@@ -216,10 +226,18 @@ def main_worker(gpu, ngpus_per_node, args):
 # #         model = models.__dict__[args.arch]()
 #         model = models.resnet18()
 # #         model.fc = nn.Linear(2048, 1)
-
-    model = models.__dict__[args.arch](num_classes=1, pretrained=False)
-    if args.dropout != 0:
-        model.fc.register_forward_hook(lambda m, inp, out: F.dropout(out, p=args.dropout, training=m.training))
+    if args.mymodel == '1':
+        model = MultiTaskModel1()
+    elif args.mymodel == '2':
+        model = MultiTaskModel2()
+    elif args.mymodel == '3':
+        model = MultiTaskModel3() 
+    elif args.mymodel == '4':
+#         checkpoint = torch.load('./checkpoints/checkpoints_baseline_multitask/model_best.pth.tar')
+        model = MultiTaskModel4()
+#         model.load_state_dict(checkpoint, strict=False)
+    else:
+        model = MultiTaskModel()
 
 #     if args.distributed:
 #         # For multiprocessing distributed, DistributedDataParallel constructor
@@ -250,6 +268,7 @@ def main_worker(gpu, ngpus_per_node, args):
 #         else:
 #             model = torch.nn.DataParallel(model).cuda()
 
+    # Device setting
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Device {}".format(device))
             
@@ -310,18 +329,34 @@ def main_worker(gpu, ngpus_per_node, args):
             return
         else:
             root_dir_results = args.augedir
+
+        # Train data augmentations
+    train_trans = transforms.Compose(
+                        [
+                            transforms.Resize(256),
+#                             transforms.RandomResizedCrop(224),
+                            transforms.RandomHorizontalFlip(),
+                            # auto.ImageNetPolicy(),
+                            transforms.ToTensor(),
+                            normalize
+                        ]
+                    )
+    
+    train_dataset = MultiTaskPETDataset('./pet.csv', './ct.csv', 
+                                     '../datasets/final_mr_ct/pet_fake', '../datasets/final_mr_ct/trainB',
+                                    transform = train_trans)
         
-    train_dataset = RgrDataset(
-        'ct.csv', traindir, args.augement, 
-        transforms.Compose([
-              transforms.Resize(256),
-#               transforms.CenterCrop(224), 
-#               transforms.RandomRotation(15),
-#               transforms.RandomAffine(degrees=15),
-              transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ]), root_dir_results = root_dir_results)
+#     train_dataset = RgrDataset(
+#         'ct.csv', traindir, args.augement, 
+#         transforms.Compose([
+#               transforms.Resize(256),
+# #               transforms.CenterCrop(224), 
+# #               transforms.RandomRotation(15),
+# #               transforms.RandomAffine(degrees=15),
+#               transforms.RandomHorizontalFlip(),
+#             transforms.ToTensor(),
+#             normalize,
+#         ]), root_dir_results = root_dir_results)
 
     if args.distributed:
         train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
@@ -332,19 +367,30 @@ def main_worker(gpu, ngpus_per_node, args):
         train_dataset, batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True, sampler=train_sampler)
 
+    val_test_trans = transforms.Compose(
+                        [
+                            transforms.Resize(256),
+#                             transforms.CenterCrop(224),
+                            transforms.ToTensor(),
+                            normalize
+                        ]
+                    )
+
+    
     val_loader = torch.utils.data.DataLoader(
         RgrDataset(
-        'ct.csv', valdir, args.augement, 
-        transforms.Compose([  
-            transforms.Resize(256),
-#             transforms.RandomResizedCrop(256),
-#             transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize,
-        ])), 
+        'ct.csv', valdir, 'pure', 
+        val_test_trans), 
         batch_size=args.batch_size, shuffle=True,
         num_workers=args.workers, pin_memory=True)
+    
 
+        
+    testset = RgrDataset('ct.csv', args.test_dir, args.augement, transform=val_test_trans)
+ 
+    test_loader = torch.utils.data.DataLoader(testset,batch_size=args.batch_size)
+
+    
     if args.evaluate:
         validate(val_loader, model, criterion, args)
         return
@@ -360,13 +406,15 @@ def main_worker(gpu, ngpus_per_node, args):
                 lr = adjust_learning_rate(optimizer, epoch, args)
 
                 # train for one epoch
-                loss_tr = train(train_loader, model, criterion, optimizer, epoch, args)
+                loss_tr_mr, loss_tr_ct, loss_tr_total = train(train_loader, model, criterion, optimizer, epoch, args)
 
                 # evaluate on validation set
                 loss = validate(val_loader, model, criterion, args, epoch)
 
                 writer.add_scalars('Loss' + str(i), {
-                    'Train': loss_tr,
+                    'Train_mr': loss_tr_mr,
+                    'Train_ct': loss_tr_ct,
+                    'Train_total': loss_tr_total,
                     'Val': loss
                 }, epoch)
                 writer.flush()
@@ -377,12 +425,32 @@ def main_worker(gpu, ngpus_per_node, args):
                 
                 if (args.epochs - epoch) <= 10:
                     outcome += loss
-                    
-                if is_best and epoch % 10 != 0:
-                    save_checkpoint(model.state_dict(), is_best, epoch)
-                if epoch % 10 == 0:
-                    save_checkpoint(model.state_dict(), is_best, epoch)
 
+                if is_best and epoch % 10 != 0:
+                    save_checkpoint(model.state_dict(), is_best, epoch, optimizer)
+
+                if epoch % 10 == 0:
+                    save_checkpoint(model.state_dict(), is_best, epoch, optimizer)
+              
+            # Start test
+            print('...........Testing Start..........')
+            print('Loading best checkpoint ...')
+
+            # Load best checkpont
+            load_resume(args, model, optimizer, args.resumedir)
+
+            # Test the best checkpoint
+            loss_test = validate(test_loader, model, criterion, args, epoch)
+
+            # Record the test loss
+            record = {
+                'loss_test': loss_test,
+            }
+            torch.save(record, os.path.join(args.resumedir, 'test_info.pth.tar'))
+
+            print('[INFO] TEST LOSS: ' + str(loss_test))
+            print('...........Testing End..........')
+            
                     
             outcome /= 10    
             writer1.writerow(str(outcome))
@@ -407,12 +475,14 @@ def main_worker(gpu, ngpus_per_node, args):
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
-    losses = AverageMeter('Loss', ':.4e')
+    losses_mr = AverageMeter('Loss', ':.4e')
+    losses_ct = AverageMeter('Loss', ':.4e')
+    losses_total = AverageMeter('Loss', ':.4e')
     # top1 = AverageMeter('Acc@1', ':6.2f')
     # top5 = AverageMeter('Acc@5', ':6.2f')
     progress = ProgressMeter(
         len(train_loader),
-        [batch_time, data_time, losses],
+        [batch_time, data_time, losses_ct],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -421,37 +491,46 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
     
 
     end = time.time()
-    for i, (images, target) in enumerate(train_loader):
+    for i, (image_ct, label_ct, image_mr, label_mr) in enumerate(train_loader):
+#         print("[DEBUG] image_ct size: " + str(image_ct.size()) + ", label size: " + str(label_ct.size()))
+#         print("[DEBUG] image_mr size: " + str(image_mr.size()) + ", label size: " + str(label_mr.size()))
 #         print('images.size: ' + str(images.size()))
 #         print('target.size: ' + str(target.size()))
         # measure data loading time
         data_time.update(time.time() - end)
 
         if args.gpu is not None:
-            images = images.cuda(args.gpu, non_blocking=True)
+            image_ct = image_ct.cuda(args.gpu, non_blocking=True)
+            image_mr = image_mr.cuda(args.gpu, non_blocking=True)
         else:
-            images = images.cuda(0, non_blocking=True)
-        target = target.type(torch.FloatTensor).view(-1, 1).cuda(args.gpu, non_blocking=True)
+            image_ct = image_ct.cuda(0, non_blocking=True)
+            image_mr = image_mr.cuda(0, non_blocking=True)
+        label_ct = label_ct.type(torch.FloatTensor).view(-1, 1).cuda(args.gpu, non_blocking=True)
+        label_mr = label_mr.type(torch.FloatTensor).view(-1, 1).cuda(args.gpu, non_blocking=True)
     
 
         # compute output
-        output = model(images)
+        output_mr, output_ct = model(image_mr, image_ct)
 #         print('OUTPUT:')
 #         print(output)
 #         print('========================================')
 #         print('TARGET:')
 #         print(target)
-        loss = criterion(output, target)
+        loss_mr = criterion(output_mr, label_mr)
+        loss_ct = criterion(output_ct, label_ct)
+        loss_total = args.lambda1 * loss_mr + args.lambda2 * loss_ct
 
         # measure accuracy and record loss
         # acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        losses.update(loss.item(), images.size(0))
+        losses_mr.update(loss_mr.item(), image_mr.size(0))
+        losses_ct.update(loss_ct.item(), image_ct.size(0))
+        losses_total.update(loss_total.item(), image_ct.size(0))
         # top1.update(acc1[0], images.size(0))
         # top5.update(acc5[0], images.size(0))
 
         # compute gradient and do SGD step
         optimizer.zero_grad()
-        loss.backward()
+        loss_total.backward()
         optimizer.step()
 
         # measure elapsed time
@@ -462,7 +541,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
             progress.display(i)
             
     
-    return losses.avg
+    return losses_mr.avg, losses_ct.avg, losses_total.avg
 
 
 def validate(val_loader, model, criterion, args, epoch):
@@ -485,8 +564,8 @@ def validate(val_loader, model, criterion, args, epoch):
                 images = images.cuda(args.gpu, non_blocking=True)
             target = target.view(-1, 1).type(torch.FloatTensor).cuda(args.gpu, non_blocking=True)
             # compute output
-            output = model(images)
-            loss = criterion(output, target)
+            output_ct = model(None, images)
+            loss = criterion(output_ct, target)
             
             # measure accuracy and record loss
             # acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -509,6 +588,24 @@ def validate(val_loader, model, criterion, args, epoch):
 #     writer.flush()
     return losses.avg
 
+# Util function: load resume
+def load_resume(args, model, optimizer, load_path):
+    if load_path:
+        # Default load best.pth.tar
+        load_path = os.path.join(load_path, 'model_best.pth.tar')
+        if os.path.isfile(load_path):
+            print("=> loading checkpoint '{}'".format(load_path))
+            checkpoint = torch.load(load_path)
+            args.start_epoch = checkpoint['epoch']
+            model.load_state_dict(checkpoint['state_dict'])
+            optimizer.load_state_dict(checkpoint['optimizer'])
+            print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(load_path, checkpoint['epoch']))
+        else:
+            print("=> no checkpoint found at '{}'".format(load_path))
+    else:
+        print('[ERROR] No load path provided ...') 
+    
 
 # def save_checkpoint(state, is_best, epoch, filename=args.resumedir):
 #     filename = args.resumedir + 'checkpoint-' + TIMESTAMP + '/' + str(epoch) + '.pth.tar'
@@ -521,16 +618,16 @@ def validate(val_loader, model, criterion, args, epoch):
 #     if is_best:
 #         shutil.copyfile(filename, 'model_best.pth.tar')
 
-def save_checkpoint(state, is_best, epoch, checkpoint_path=args.resumedir):
+def save_checkpoint(state, is_best, epoch, optimizer, checkpoint_path=args.resumedir):
     record = {
         'epoch': epoch + 1,
         'state_dict': state,
+        'optimizer': optimizer.state_dict(),
     }
     filename = os.path.join(checkpoint_path, 'record_epoch{}.pth.tar'.format(epoch))
     torch.save(record, filename)
     if is_best:
         shutil.copyfile(filename, os.path.join(checkpoint_path, 'model_best.pth.tar'))
-
 
 
 class AverageMeter(object):

@@ -66,7 +66,7 @@ class RgrDataset(Dataset):
         self.loader = loader
         self.transform = transform
         
-        self.pure_file_names = os.listdir(self.root_dir)
+        self.pure_file_names = [file_name for file_name in  os.listdir(self.root_dir) if len(file_name) > 6]
         if root_dir_results is not None:
             self.toge_file_names = [file_name for file_name in os.listdir(self.root_dir_results) if 'TCGA_HT_A61B' not in file_name \
                                     and 'fake' in file_name \
@@ -79,6 +79,14 @@ class RgrDataset(Dataset):
         self.expe_fake_ct_dir =  [file_name for file_name in os.listdir(self.root_dir) if 'TCGA_HT_A61B' not in file_name \
                                     and 'fake' in file_name \
                                     and len(file_name) > 12]
+        # PET
+        self.pet_csv_pth = './pet.csv'
+        self.pet_csv_data = pd.read_csv(self.pet_csv_pth)
+        
+        self.pet_imgs_pth = root_dir
+        self.pet_imgs = [os.path.join(self.pet_imgs_pth, img) for img in os.listdir(self.pet_imgs_pth)]
+        self.pet_number = len(self.pet_imgs)
+
 #         self.pure_mri = '/yy-volume/gan_example/datasets/mr_ct/trainA/'
 #         self.pure_mri_val = '/yy-volume/gan_example/datasets/mr_ct/testA/'
 #         self.fake_ct = '/yy-volume/train_rgr/datasets/together/train/mr2ct-pretrained/test_latest/images/'
@@ -94,6 +102,30 @@ class RgrDataset(Dataset):
         if self.transform is not None:
             img = self.transform(img)
         return np.array(img), age
+    
+    def create_mr_pure(self, idx):
+        filename = self.pure_file_names[idx]
+        path = self.root_dir + filename
+        img = self.loader(path)
+        patient_id = filename[:12]
+        age = int((self.mri_csv_data).loc[self.mri_csv_data['Patient'] == patient_id, 'age_at_initial_pathologic'])
+        if self.transform is not None:
+            img = self.transform(img)
+        return np.array(img), age
+    
+    def create_pet_pure(self, idx):
+        img_pth = self.pet_imgs[idx]
+        img_name = img_pth.split('/')[-1]
+        # Get image
+        # image = Image.fromarray(io.imread(img_pth), mode='RGB')
+        image = Image.open(img_pth).convert('RGB')
+        if self.transform:
+            image = self.transform(image)
+        # Get label
+        patient_id = '-'.join(img_name.split('-')[:3])
+        label = int((self.pet_csv_data).loc[self.pet_csv_data['Patient #'] == patient_id, 'Age'])
+        # Return
+        return image, label
 
     def create_results(self, idx):
         idx -= len(self.pure_file_names)
@@ -166,6 +198,10 @@ class RgrDataset(Dataset):
                 return len(self.expe_fake_ct_dir)
             else:
                 return len(self.expe_pure_mr)
+        elif self.mode == 'mr_pure':
+            return len(self.pure_file_names)
+        elif self.mode == 'pet_pure':
+            return self.pet_number
         else:
             print('===================!')
             print('WRONG MODE!')
@@ -182,6 +218,10 @@ class RgrDataset(Dataset):
                 return self.create_results(idx)
         elif self.mode == 'expe':
             return self.expe(idx)
+        elif self.mode == 'mr_pure':
+            return self.create_mr_pure(idx)
+        elif self.mode == 'pet_pure':
+            return self.create_pet_pure(idx)
         else:
             print('===================')
             print('WRONG MODE!')
